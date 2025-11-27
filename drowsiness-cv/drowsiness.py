@@ -20,24 +20,28 @@ def eye_aspect_ratio(eye):
 	ear = (A + B) / (2.0 * C)
 	return ear
 	
-def detect_drowsiness(frame: np.ndarray) -> bool: 
+def detect_drowsiness(frame: np.ndarray) -> tuple[bool, float]: 
 	frame = imutils.resize(frame, width=450)
 	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 	subjects = detect(gray, 0)
-	for subject in subjects:
-		shape = predict(gray, subject)
-		shape = face_utils.shape_to_np(shape)#converting to NumPy Array
-		leftEye = shape[lStart:lEnd]
-		rightEye = shape[rStart:rEnd]
-		leftEAR = eye_aspect_ratio(leftEye)
-		rightEAR = eye_aspect_ratio(rightEye)
-		ear = (leftEAR + rightEAR) / 2.0
-		leftEyeHull = cv2.convexHull(leftEye)
-		rightEyeHull = cv2.convexHull(rightEye)
-		cv2.drawContours(frame, [leftEyeHull], -1, (0, 255, 0), 1)
-		cv2.drawContours(frame, [rightEyeHull], -1, (0, 255, 0), 1)
-		if ear < thresh:
-			return True
-	return False
+	if len(subjects) == 0:
+		return False, 0.0
+
+	subject = subjects[0]
+	shape = predict(gray, subject)
+	shape = face_utils.shape_to_np(shape)#converting to NumPy Array
+	leftEye = shape[lStart:lEnd]
+	rightEye = shape[rStart:rEnd]
+	leftEAR = eye_aspect_ratio(leftEye)
+	rightEAR = eye_aspect_ratio(rightEye)
+	ear = (leftEAR + rightEAR) / 2.0
+	# leftEyeHull = cv2.convexHull(leftEye)
+	# rightEyeHull = cv2.convexHull(rightEye)
+	# cv2.drawContours(frame, [leftEyeHull], -1, (0, 255, 0), 1)
+	# cv2.drawContours(frame, [rightEyeHull], -1, (0, 255, 0), 1)
+	if ear < thresh:
+		return True, ear
+	
+	return False, ear
 	
 
