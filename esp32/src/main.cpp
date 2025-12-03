@@ -11,11 +11,11 @@ String serverName = SERVER_IP;
 
 String serverPath = "/detect";
 const int serverPort = 5241;
-
+const int BAUAD_RATE = 115200;
 const int timerInterval = 2000;    // time between each HTTP POST image
 
 void setup() {
-    Serial.begin(115200);
+    Serial.begin(BAUAD_RATE);
     Serial.println("Connecting to WiFi...");
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
@@ -53,15 +53,13 @@ void loop() {
         http.begin(url.c_str());
         http.addHeader("Content-Type", "image/jpeg");
 
-        Serial.println(fb->len);
         int httpResponseCode = http.POST(fb->buf, fb->len);
 
         if (httpResponseCode > 0) {
             String response = http.getString();
             Serial.println("Response:");
             Serial.println(response);
-        } 
-        else {
+        } else {
             Serial.printf("Error occurred while sending POST: %s\n", http.errorToString(httpResponseCode).c_str());
         }
 
