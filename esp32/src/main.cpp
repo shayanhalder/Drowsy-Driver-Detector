@@ -6,22 +6,23 @@
 #include <secrets.h>
 #include <ArduinoJson.h> 
 
-const char* ssid = WIFI_SSID;
-const char* password = WIFI_PASSWORD;
-String serverName = SERVER_IP;
 
-String serverPath = "/detect";
-const int serverPort = 5241;
 const int BAUAD_RATE = 115200;
 const int timerInterval = 1000;    // time between each HTTP POST image
-const int drowsyCooldown = 10 * 60000; // 10 minutes cooldown
-JsonDocument getNearestGasStation(float latitude, float longitude) {
-    HTTPClient http;
-    http.begin(GOOGLE_MAPS_API_ENDPOINT);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("X-Goog-Api-Key", GOOGLE_MAPS_API_KEY);
-    http.addHeader("X-Goog-FieldMask", "places.displayName,places.location");
+const int drowsyCooldown = 10 * 60000; // 10 minutes cooldown after drowsiness detected
 
+HTTPClient detectHttp;
+String detectEndpoint = "http://" + SERVER_IP + SERVER_DETECT_PATH;
+
+HTTPClient routeHttp;
+String routeEndpoint = String("http://") + MOBILE_IP + ":8080" + "/navigate";
+
+HTTPClient coordinatesHttp;
+String coordinatesEndpoint = String("http://") + MOBILE_IP + ":8080" + "/location";
+
+HTTPClient gasStationHttp;
+
+JsonDocument getNearestGasStation(float latitude, float longitude) {
     JsonDocument doc;
     doc["includedTypes"][0] = "gas_station";
     doc["maxResultCount"] = 10;
@@ -31,12 +32,12 @@ JsonDocument getNearestGasStation(float latitude, float longitude) {
 
     String requestBody;
     serializeJson(doc, requestBody);
-    int httpResponseCode = http.POST(requestBody);
+    int httpResponseCode = gasStationHttp.POST(requestBody);
 
     JsonDocument responseDoc;
 
     if (httpResponseCode > 0) {
-        String response = http.getString();
+        String response = gasStationHttp.getString();
         Serial.println("Response:");
         Serial.println(response);
 
@@ -53,15 +54,10 @@ JsonDocument getNearestGasStation(float latitude, float longitude) {
                     float gasStationLat = firstPlace["location"]["latitude"];
                     float gasStationLng = firstPlace["location"]["longitude"];
 
-                    
-                    // const char* displayName = firstPlace["displayName"]["text"];
-                    
                     Serial.println("Nearest Gas Station:");
-                    // Serial.printf("Name: %s\n", displayName);
                     Serial.printf("Latitude: %.6f\n", gasStationLat);
                     Serial.printf("Longitude: %.6f\n", gasStationLng);
                     return responseDoc;
-                    // return [gasStationLat, gasStationLng];
                 } else {
                     Serial.println("No places found in response");
                 }
@@ -69,25 +65,19 @@ JsonDocument getNearestGasStation(float latitude, float longitude) {
         }
         
     } else {
-        Serial.printf("Error occurred while sending POST: %s\n", http.errorToString(httpResponseCode).c_str());
+        Serial.printf("Error occurred while sending POST: %s\n", gasStationHttp.errorToString(httpResponseCode).c_str());
     }
 
-    http.end();
-    // int response[] = {0};
 
     return responseDoc;
 }
 
 JsonDocument getCoordinates() {
-    HTTPClient http;
-    String locationEndpoint = String("http://") + MOBILE_IP + ":8080" + "/location";
-    http.begin(locationEndpoint);
     JsonDocument doc;
-
-    int httpResponseCode = http.GET();
+    int httpResponseCode = coordinatesHttp.GET();
 
     if (httpResponseCode > 0) {
-        String response = http.getString();
+        String response = coordinatesHttp.getString();
         Serial.println("Response:");
         Serial.println(response);
         DeserializationError error = deserializeJson(doc, response);
@@ -102,10 +92,8 @@ JsonDocument getCoordinates() {
         Serial.print("Longitude: ");
         Serial.println(longitude);
     } else {
-        Serial.printf("Error occurred while sending POST: %s\n", http.errorToString(httpResponseCode).c_str());
+        Serial.printf("Error occurred while sending POST: %s\n", coordinatesHttp.errorToString(httpResponseCode).c_str());
     }
-
-    http.end();
 
     return doc;
 }
@@ -113,11 +101,12 @@ JsonDocument getCoordinates() {
 
 void setup() {
     Serial.begin(BAUAD_RATE);
-    Serial.println("Connecting to WiFi...");
-    Serial.println("Wifi ssid: " + String(ssid));
-    Serial.println("Wifi password: " + String(password));
 
-    WiFi.begin(ssid, password);
+    Serial.println("Wifi ssid: " + WIFI_SSID);
+    Serial.println("Wifi password: " + WIFI_PASSWORD);
+    Serial.println("Connecting to WiFi...");
+
+    WiFi.begin(WIFI_SSID.c_str(), WIFI_PASSWORD.c_str());
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
@@ -128,6 +117,20 @@ void setup() {
     Serial.println(WiFi.localIP());
     Serial.println("MAC address: ");
     Serial.println(WiFi.macAddress());
+
+    detectHttp.begin(detectEndpoint.c_str());
+    detectHttp.addHeader("Content-Type", "image/jpeg");
+
+    routeHttp.begin(routeEndpoint);
+    routeHttp.addHeader("Content-Type", "application/json");
+
+    coordinatesHttp.begin(coordinatesEndpoint);
+    coordinatesHttp.addHeader("Content-Type", "application/json");
+
+    gasStationHttp.begin(GOOGLE_MAPS_API_ENDPOINT);
+    gasStationHttp.addHeader("Content-Type", "application/json");
+    gasStationHttp.addHeader("X-Goog-Api-Key", GOOGLE_MAPS_API_KEY);
+    gasStationHttp.addHeader("X-Goog-FieldMask", "places.displayName,places.location");
 
     esp_err_t err = esp_camera_init(&camera_config);
     if (err != ESP_OK) {
@@ -149,89 +152,94 @@ void loop() {
     }
 
     // send the image as a post request
-    if (WiFi.status() == WL_CONNECTED) {
-        HTTPClient http;
-        String url = "http://" + String(SERVER_IP) + ":" + "5241" + serverPath;
-        http.begin(url.c_str());
-        http.addHeader("Content-Type", "image/jpeg");
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi not connected");
+        esp_camera_fb_return(fb);
+        delay(timerInterval);
+        return;
+    }
 
-        int httpResponseCode = http.POST(fb->buf, fb->len);
+    int httpResponseCode = detectHttp.POST(fb->buf, fb->len);
 
-        if (httpResponseCode > 0) {
-            String response = http.getString();
-            Serial.println("Response:");
-            Serial.println(response);
-            
-            // parse json response
-            JsonDocument doc;
-            DeserializationError error = deserializeJson(doc, response);
-            
-            if (error) {
-                Serial.print("JSON parsing failed: ");
-                Serial.println(error.c_str());
-            } else {
-                if (doc.containsKey("drowsy")) {
-                    bool drowsy = doc["drowsy"];
-                    Serial.print("Drowsy: ");
-                    Serial.println(drowsy ? "true" : "false");
-                    if (drowsy) {
-                        Serial.println("ALERT: Drowsiness detected!");
-                        // get the current GPS coordinates
-                        JsonDocument locationDoc = getCoordinates();
-                        float latitude = locationDoc["latitude"];
-                        float longitude = locationDoc["longitude"];
+    if (httpResponseCode <= 0) {
+        Serial.printf("Error occurred while sending POST: %s\n", detectHttp.errorToString(httpResponseCode).c_str());
+        esp_camera_fb_return(fb);
+        delay(timerInterval);
+        return;
+    }
 
-                        JsonDocument gasStationDoc = getNearestGasStation(latitude, longitude);
-                        if (gasStationDoc["places"].is<JsonArray>()) {
-                            JsonArray places = gasStationDoc["places"].as<JsonArray>();
-                            if (places.size() > 0) {
-                                JsonObject firstPlace = places[0];
-                                float gasStationLat = firstPlace["location"]["latitude"];
-                                float gasStationLng = firstPlace["location"]["longitude"];
-
-                                HTTPClient routeHttp;
-                                String routeEndpoint = String("http://") + MOBILE_IP + ":8080" + "/navigate";
-                                routeHttp.begin(routeEndpoint);
-                                routeHttp.addHeader("Content-Type", "application/json");
-                                JsonDocument routeDoc;
-                                routeDoc["latitude"] = gasStationLat;
-                                routeDoc["longitude"] = gasStationLng;
-
-                                int routeHttpResponseCode = routeHttp.POST(routeDoc.as<String>());
-                                if (routeHttpResponseCode > 0) {
-                                    String routeResponse = routeHttp.getString();
-                                    Serial.println("Route Response:");
-                                    Serial.println(routeResponse);
-                                } else {
-                                    Serial.printf("Error occurred while sending POST: %s\n", routeHttp.errorToString(routeHttpResponseCode).c_str());
-                                }
-                                routeHttp.end();
-                                delay(drowsyCooldown);
-                            }
-                        }
-                    }
-                
-                if (doc.containsKey("score")) {
-                    float score = doc["score"];
-                    Serial.print("score: ");
-                    Serial.println(score);
-                }
-            } 
+    String response = detectHttp.getString();
+    Serial.println("Response:");
+    Serial.println(response);
+    
+    // parse json response
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, response);
         
-        else {
-            Serial.printf("Error occurred while sending POST: %s\n", http.errorToString(httpResponseCode).c_str());
+    if (error) {
+        Serial.print("JSON parsing failed: ");
+        Serial.println(error.c_str());
+        esp_camera_fb_return(fb);
+        delay(timerInterval);
+        return;
+    }
+
+    if (!doc.containsKey("drowsy")) {
+        Serial.println("ERROR: No drowsy key in response");
+        esp_camera_fb_return(fb);
+        delay(timerInterval);
+        return;
+    }
+    
+    bool drowsy = doc["drowsy"];
+    if (!drowsy) {
+        Serial.println("Driver is alert.");
+        esp_camera_fb_return(fb);
+        delay(timerInterval);
+        return;
+    }
+
+    Serial.println("ALERT: Drowsiness detected!");
+
+    // get the current GPS coordinates
+    JsonDocument locationDoc = getCoordinates();
+    float latitude = locationDoc["latitude"];
+    float longitude = locationDoc["longitude"];
+
+    JsonDocument gasStationDoc = getNearestGasStation(latitude, longitude);
+    if (gasStationDoc["places"].is<JsonArray>()) {
+        JsonArray places = gasStationDoc["places"].as<JsonArray>();
+        if (places.size() == 0) {
+            Serial.println("No gas stations found nearby.");
+            esp_camera_fb_return(fb);
+            delay(timerInterval);
+            return;
+        }
+        
+        JsonObject firstPlace = places[0];
+        float gasStationLat = firstPlace["location"]["latitude"];
+        float gasStationLng = firstPlace["location"]["longitude"];
+
+        JsonDocument routeDoc;
+        routeDoc["latitude"] = gasStationLat;
+        routeDoc["longitude"] = gasStationLng;
+
+        int routeHttpResponseCode = routeHttp.POST(routeDoc.as<String>());
+
+        if (routeHttpResponseCode > 0) {
+            String routeResponse = routeHttp.getString();
+            Serial.println("Route Response:");
+            Serial.println(routeResponse);
+        } else {
+            Serial.printf("Error occurred while sending POST: %s\n", routeHttp.errorToString(routeHttpResponseCode).c_str());
         }
 
-        http.end();
-    }
-    } else {
-        Serial.println("WiFi not connected");
+        esp_camera_fb_return(fb);
+        delay(drowsyCooldown);
+        return;
     }
 
     esp_camera_fb_return(fb);
-    
     delay(timerInterval);
-
-}          
 }
 
