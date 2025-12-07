@@ -5,7 +5,10 @@
 #include "camera_pin_layout.h"
 #include <secrets.h>
 #include <ArduinoJson.h> 
+#include <pitches.h>
 
+#define BUZZER_PIN 38
+#define LED_PIN 47
 
 const int BAUAD_RATE = 115200;
 const int timerInterval = 1000;    // time between each HTTP POST image
@@ -65,7 +68,7 @@ JsonDocument getNearestGasStation(float latitude, float longitude) {
         }
         
     } else {
-        Serial.printf("Error occurred while sending POST: %s\n", gasStationHttp.errorToString(httpResponseCode).c_str());
+        Serial.printf("Error occurred while sending POST to Google Maps API for nearest gas station: %s\n", gasStationHttp.errorToString(httpResponseCode).c_str());
     }
 
 
@@ -78,7 +81,7 @@ JsonDocument getCoordinates() {
 
     if (httpResponseCode > 0) {
         String response = coordinatesHttp.getString();
-        Serial.println("Response:");
+        Serial.println("Mobile Coordinates API Response:");
         Serial.println(response);
         DeserializationError error = deserializeJson(doc, response);
         if (error) {
@@ -92,7 +95,7 @@ JsonDocument getCoordinates() {
         Serial.print("Longitude: ");
         Serial.println(longitude);
     } else {
-        Serial.printf("Error occurred while sending POST: %s\n", coordinatesHttp.errorToString(httpResponseCode).c_str());
+        Serial.printf("Error occurred while sending GET to Mobile Coordinates API: %s\n", coordinatesHttp.errorToString(httpResponseCode).c_str());
     }
 
     return doc;
@@ -101,7 +104,12 @@ JsonDocument getCoordinates() {
 
 void setup() {
     Serial.begin(BAUAD_RATE);
+    pinMode(BUZZER_PIN, OUTPUT);
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, HIGH); // blink LED while connecting to WiFi
+    delay(500);
 
+    
     Serial.println("Wifi ssid: " + WIFI_SSID);
     Serial.println("Wifi password: " + WIFI_PASSWORD);
     Serial.println("Connecting to WiFi...");
@@ -109,7 +117,11 @@ void setup() {
     WiFi.begin(WIFI_SSID.c_str(), WIFI_PASSWORD.c_str());
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
+        digitalWrite(LED_PIN, HIGH); // blink LED while connecting to WiFi
         Serial.print(".");
+        delay(500);
+        digitalWrite(LED_PIN, LOW); 
+        // delay(2000);
     }
     Serial.println("");
     Serial.println("WiFi connected");
@@ -138,17 +150,20 @@ void setup() {
         delay(1000);
         ESP.restart();
     }
+    // digitalWrite(LED_PIN, HIGH); // turn on LED to indicate processing
 }
 
 
 
 void loop() {
+    // digitalWrite(LED_PIN, HIGH); // turn on LED to indicate processing
     camera_fb_t * fb = NULL;
     fb = esp_camera_fb_get();
     if(!fb) {
         Serial.println("Camera capture failed");
         delay(1000);
         ESP.restart();
+        return;
     }
 
     // send the image as a post request
@@ -200,6 +215,14 @@ void loop() {
     }
 
     Serial.println("ALERT: Drowsiness detected!");
+
+    // sound buzzer for 10 seconds
+    Serial.println("Sounding buzzer for 10 seconds after detecting drowsiness...");
+    ledcSetup(0, NOTE_G6, 8); // channel 0, frequency NOTE_G6, 8-bit resolution
+    ledcAttachPin(BUZZER_PIN, 0);
+    ledcWrite(0, 240); // 255 = 100% duty cycle = loudest
+    delay(10000); // Duration in milliseconds (10 seconds)
+    ledcWrite(0, 0); // Turn off buzzer
 
     // get the current GPS coordinates
     JsonDocument locationDoc = getCoordinates();
