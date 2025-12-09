@@ -5,7 +5,7 @@ import dlib
 import cv2
 import numpy as np
 
-thresh = 0.25
+thresh = 0.20
 frame_check = 20
 detect = dlib.get_frontal_face_detector()
 predict = dlib.shape_predictor("models/shape_predictor_68_face_landmarks.dat")# Dat file is the crux of the code
