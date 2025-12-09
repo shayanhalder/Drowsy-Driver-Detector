@@ -106,9 +106,8 @@ void setup() {
     Serial.begin(BAUAD_RATE);
     pinMode(BUZZER_PIN, OUTPUT);
     pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, HIGH); // blink LED while connecting to WiFi
+    digitalWrite(LED_PIN, HIGH);
     delay(500);
-
     
     Serial.println("Wifi ssid: " + WIFI_SSID);
     Serial.println("Wifi password: " + WIFI_PASSWORD);
@@ -121,7 +120,6 @@ void setup() {
         Serial.print(".");
         delay(500);
         digitalWrite(LED_PIN, LOW); 
-        // delay(2000);
     }
     Serial.println("");
     Serial.println("WiFi connected");
@@ -156,7 +154,6 @@ void setup() {
 
 
 void loop() {
-    // digitalWrite(LED_PIN, HIGH); // turn on LED to indicate processing
     camera_fb_t * fb = NULL;
     fb = esp_camera_fb_get();
     if(!fb) {
@@ -217,11 +214,11 @@ void loop() {
     Serial.println("ALERT: Drowsiness detected!");
 
     // sound buzzer for 10 seconds
-    Serial.println("Sounding buzzer for 10 seconds after detecting drowsiness...");
+    Serial.println("Sounding buzzer for 5 seconds after detecting drowsiness...");
     ledcSetup(0, NOTE_G6, 8); // channel 0, frequency NOTE_G6, 8-bit resolution
     ledcAttachPin(BUZZER_PIN, 0);
     ledcWrite(0, 240); // 255 = 100% duty cycle = loudest
-    delay(10000); // Duration in milliseconds (10 seconds)
+    delay(5000); // Duration in milliseconds (5 seconds)
     ledcWrite(0, 0); // Turn off buzzer
 
     // get the current GPS coordinates
@@ -258,7 +255,6 @@ void loop() {
         }
 
         esp_camera_fb_return(fb);
-        delay(drowsyCooldown);
         return;
     }
 
