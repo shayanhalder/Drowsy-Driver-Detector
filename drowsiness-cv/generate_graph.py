@@ -11,17 +11,13 @@ def generate_drowsiness_graph(csv_path='logs/drowsiness_log.csv', output_path='d
         csv_path: Path to the drowsiness log CSV file
         output_path: Path where the graph image will be saved
     """
-    # Read the CSV file
     df = pd.read_csv(csv_path)
     
-    # Convert timestamp strings to datetime objects
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     
-    # Create the plot
     plt.figure(figsize=(12, 6))
     plt.plot(df['timestamp'], df['score'], marker='o', linestyle='-', linewidth=2, markersize=4)
     
-    # Customize the plot
     plt.xlabel('Time', fontsize=12)
     plt.ylabel('Drowsiness Score', fontsize=12)
     plt.title('Drowsiness Score Over Time', fontsize=14, fontweight='bold')
@@ -29,11 +25,9 @@ def generate_drowsiness_graph(csv_path='logs/drowsiness_log.csv', output_path='d
     plt.xticks(rotation=45)
     plt.tight_layout()
     
-    # Save the plot
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     print(f"Graph saved to {output_path}")
     
-    # Display the plot
     plt.show()
 
 

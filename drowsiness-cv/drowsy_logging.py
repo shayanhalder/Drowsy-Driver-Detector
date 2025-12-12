@@ -4,6 +4,10 @@ import os
 
 
 def log_drowsiness_score(is_drowsy: bool, score: float) -> None:
+    """
+        Log the drowsiness score with a timestamp to a CSV file.
+        Logs are stored in 'logs/drowsiness_log.csv'.
+    """
     log_file = "logs/drowsiness_log.csv"
     file_exists = os.path.isfile(log_file)
     
